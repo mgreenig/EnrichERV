@@ -1,0 +1,3 @@
+figures/*.ai
+.ipynb_checkpoints
+*/.ipynb_checkpoints
