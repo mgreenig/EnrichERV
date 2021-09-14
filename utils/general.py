@@ -77,7 +77,7 @@ class GenomeLookup:
             
         return results
     
-     # get the index of an element from a set with maximum overlap with a given sequence start, end
+    # get the index of an element from a set with maximum overlap with a given sequence start, end
     @staticmethod
     def _getMaxOverlap(start1, end1, start2, end2):
         
@@ -87,10 +87,10 @@ class GenomeLookup:
         max_overlap_idx = np.argmax(overlaps, axis = 1)
         return max_overlap_idx
     
+    # get closest HERV to each element in an annotation
     @staticmethod
     def getClosestHERVs(ann: pd.DataFrame, HERVs: pd.DataFrame):
 
-        # get closest LTR to all LTR-overlapping binding sites in MHC + corresponding LTR family
         closest_HERV_idx = GenomeLookup._getMaxOverlap(start1 = ann['Start'].to_numpy(),
                                                        end1 = ann['End'].to_numpy(),
                                                        start2 = HERVs['Start'].to_numpy(),
@@ -102,10 +102,10 @@ class GenomeLookup:
         
         return ann
     
+    # get closest element in the annotation to all HERVs provided as input
     @staticmethod
     def getClosestGenes(ann: pd.DataFrame, HERVs: pd.DataFrame):
         
-        # get closest LTR to all LTR-overlapping binding sites in MHC + corresponding LTR family
         closest_gene_idx = GenomeLookup._getMaxOverlap(start1 = HERVs['Start'].to_numpy(),
                                                        end1 = HERVs['End'].to_numpy(),
                                                        start2 = ann['Start'].to_numpy(),
