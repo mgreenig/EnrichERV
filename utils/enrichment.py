@@ -8,6 +8,8 @@ from scipy.stats import hypergeom
 
 class HERVEnrichment(Annotation):
     
+    TFBS = pd.read_parquet('../data/remap2020_hg38.pqt')
+    
     # TFBS_ann should be a bed file with four columns
     def __init__(self, 
                  TFBS_ann: str = None,
@@ -21,9 +23,7 @@ class HERVEnrichment(Annotation):
         super().__init__(human_ann = human_ann, HERV_ann = HERV_ann, LTR_ann = LTR_ann, drop_LINEs = drop_LINEs)
         
         # import remap data set
-        if TFBS_ann is None:
-            self.TFBS = pd.read_parquet('data/remap2020_hg38.pqt')
-        else:
+        if TFBS_ann is not None:
             self.TFBS = pd.read_csv(TFBS_ann, sep = '\t')
             self.TFBS.columns[:4] = [TFBS_chr_col, 'Start', 'End', TFBS_TF_col]
             
@@ -110,15 +110,6 @@ class HERVEnrichment(Annotation):
                 adj_p_values[i] = 1
         results['adj_p'] = adj_p_values
         return results
-    
-    # get the index of an element from a set with maximum overlap with a given sequence start, end
-    @staticmethod
-    def _getMaxOverlap(starts, ends, HERV_starts, HERV_ends):
-        max_starts = np.maximum(starts[:,None], HERV_starts[None, :])
-        min_ends = np.minimum(ends[:,None], HERV_ends[None, :])
-        overlaps = min_ends - max_starts
-        max_overlap_idx = np.argmax(overlaps, axis = 1)
-        return max_overlap_idx
     
     # function for finding TFs with at least one overlapping binding site with a given HERV
     @Decorators.check_element_type
@@ -297,20 +288,6 @@ class HERVEnrichment(Annotation):
                 chunked_seq = [seq[i:i+80] for i in range(0, len(seq), 80)]
                 joined_seq = '\n'.join(chunked_seq)
                 file.write(joined_seq)
-             
-    def getClosestHERVs(self, TFBS_ann: pd.DataFrame, HERVs: pd.DataFrame):
-        
-        # get closest LTR to all LTR-overlapping binding sites in MHC + corresponding LTR family
-        closest_HERV_idx = self._getMaxOverlap(starts = TFBS_ann['Start'].to_numpy(),
-                                               ends = TFBS_ann['End'].to_numpy(),
-                                               HERV_starts = HERVs['Start'].to_numpy(),
-                                               HERV_ends = HERVs['End'].to_numpy())
-                                            
-        TFBS_ann['closest_HERV_id'] = HERVs.iloc[closest_HERV_idx]['id'].values
-        
-        TFBS_ann['family'] = HERVs.iloc[closest_HERV_idx]['family'].values
-        
-        return TFBS_ann
     
     @staticmethod
     def TFEnrichmentPlot(enrichment_results: pd.DataFrame, 

@@ -24,7 +24,7 @@ class HERVDensity(Annotation):
                  human_ann: str = None,
                  HERV_ann: str = None,
                  LTR_ann: str = None,
-                 excl_regions: str = 'data/hg38_centromeres.txt',
+                 excl_regions: str = '../data/hg38_centromeres.txt',
                  drop_LINEs: bool = True):
         
         # load annotations using the parent class

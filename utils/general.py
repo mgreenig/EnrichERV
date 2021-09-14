@@ -33,15 +33,17 @@ class GenomeLookup:
     
     # vectorised version of in_region, where start/end can be np arrays (returns 2d array)
     @staticmethod
-    def in_region_vct(start_sites: np.ndarray, end_sites: np.ndarray, 
-                      start: np.ndarray, end: np.ndarray) -> np.ndarray:
-        return (start_sites[:,None] <= end[None,:]) & (end_sites[:,None] >= start[None,:])
+    def in_region_vct(start1: np.ndarray, end1: np.ndarray, 
+                      start2: np.ndarray, end2: np.ndarray) -> np.ndarray:
+        return (start1[:,None] <= end2[None,:]) & (end1[:,None] >= start2[None,:])
     
     # find the closest gene to a given HERV element (row in mhc_HERVs)
     @staticmethod
     def find_closest_gene(HERV: pd.Series, ann: pd.DataFrame) -> tuple[str, str, str, str]:
+        
         start, end = HERV[['Start', 'End']]
         overlapping_mask = GenomeLookup.in_region(ann['Start'].to_numpy(), ann['End'].to_numpy(), start, end)
+        
         # if any overlapping gene is found, find gene with the max overlap
         if overlapping_mask.any():
             overlapping = ann[overlapping_mask]
@@ -49,6 +51,7 @@ class GenomeLookup:
             max_overlap_mask = overlap_lengths == overlap_lengths.max()
             closest_gene = overlapping.loc[max_overlap_mask, :]
             results = (closest_gene['name'].values[0], 0, 'Overlapping', closest_gene['Strand'].values[0])
+            
         # otherwise find the closest gene
         else:
             # get distances between all possible combinations of HERV/human start/end
@@ -56,9 +59,11 @@ class GenomeLookup:
             start_to_end = (start - ann['End']).abs().to_numpy()
             end_to_start = (end - ann['Start']).abs().to_numpy()
             end_to_end = (end - ann['End']).abs().to_numpy()
+            
             # combine all distance arrays into a single 2D array, get minimum distance to each human gene
             all_distances = np.array([start_to_start, start_to_end, end_to_start, end_to_end]).transpose()
             min_distances = np.amin(all_distances, axis = 1)
+            
             # find the gene with the minimum distance
             min_distance_mask = min_distances == min_distances.min()
             closest_gene = ann.loc[min_distance_mask, :].iloc[0, :]
@@ -66,11 +71,55 @@ class GenomeLookup:
                 location = 'Downstream' if closest_gene['Strand'] == '+' else 'Upstream'
             else:
                 location = 'Upstream' if closest_gene['Strand'] == '+' else 'Downstream'
+                
             distance = min_distances.min()
             results = (closest_gene['name'], distance, location, closest_gene['Strand'])
+            
         return results
     
-class Annotation:
+     # get the index of an element from a set with maximum overlap with a given sequence start, end
+    @staticmethod
+    def _getMaxOverlap(start1, end1, start2, end2):
+        
+        max_starts = np.maximum(start1[:, None], start2[None, :])
+        min_ends = np.minimum(end1[:, None], end2[None, :])
+        overlaps = min_ends - max_starts
+        max_overlap_idx = np.argmax(overlaps, axis = 1)
+        return max_overlap_idx
+    
+    @staticmethod
+    def getClosestHERVs(ann: pd.DataFrame, HERVs: pd.DataFrame):
+
+        # get closest LTR to all LTR-overlapping binding sites in MHC + corresponding LTR family
+        closest_HERV_idx = GenomeLookup._getMaxOverlap(start1 = ann['Start'].to_numpy(),
+                                                       end1 = ann['End'].to_numpy(),
+                                                       start2 = HERVs['Start'].to_numpy(),
+                                                       end2 = HERVs['End'].to_numpy())
+                                            
+        ann['closest_HERV_id'] = HERVs.iloc[closest_HERV_idx]['id'].values
+        
+        ann['family'] = HERVs.iloc[closest_HERV_idx]['family'].values
+        
+        return ann
+    
+    @staticmethod
+    def getClosestGenes(ann: pd.DataFrame, HERVs: pd.DataFrame):
+        
+        # get closest LTR to all LTR-overlapping binding sites in MHC + corresponding LTR family
+        closest_gene_idx = GenomeLookup._getMaxOverlap(start1 = HERVs['Start'].to_numpy(),
+                                                       end1 = HERVs['End'].to_numpy(),
+                                                       start2 = ann['Start'].to_numpy(),
+                                                       end2 = ann['End'].to_numpy())
+                                            
+        HERVs['closest_gene_id'] = ann.iloc[closest_gene_idx]['id'].values
+                
+        return HERVs
+    
+class Annotation(GenomeLookup):
+    
+    human_annotations = pd.read_pickle('../data/gencode_v33.pkl')
+    HERV_annotations = pd.read_pickle('../data/HERVs.pkl')
+    LTR_annotations = pd.read_pickle('../data/LTRs.pkl')
     
     def __init__(self,
                  human_ann: str = None,
@@ -94,28 +143,21 @@ class Annotation:
         self.chr_start_site_dict = {f'chr{i+1}': start_site for i, start_site in enumerate(self.chr_start_sites)}
         
         # import human annotations
-        if human_ann is None:
-            self.human_annotations = pd.read_pickle('data/gencode_v33.pkl')
-        else:
+        if human_ann is not None:
             self.human_annotations = pd.read_csv(human_ann, sep = '\t')
             self.human_annotations.columns[:4] = ['Chr', 'Start', 'End', 'Name']
                
         # import HERV annotations
-        if HERV_ann is None:
-            self.HERV_annotations = pd.read_pickle('data/HERVs.pkl')
-            
-            # drop L1 elements if specified
-            if drop_LINEs == True:
-                self.HERV_annotations = self.HERV_annotations[self.HERV_annotations['Source'] != 'l1base']
-                
-        else:
+        if HERV_ann is not None:
             self.HERV_annotations = pd.read_csv(HERV_ann, sep = '\t')
             self.HERV_annotations.columns[:4] = ['Chr', 'Start', 'End', 'Name']
             
+        # drop L1 elements if specified
+        if drop_LINEs == True and 'Source' in self.HERV_annotations.columns:
+            self.HERV_annotations = self.HERV_annotations[self.HERV_annotations['Source'] != 'l1base']
+                
         # import LTR annotations    
-        if LTR_ann is None:
-            self.LTR_annotations = pd.read_pickle('data/LTRs.pkl')
-        else:
+        if LTR_ann is not None:
             self.LTR_annotations = pd.read_csv(LTR_ann, sep = '\t')
             
         # isolate autosomal HERVs and LTRs
